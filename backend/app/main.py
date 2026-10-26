@@ -1,225 +1,316 @@
-from fastapi import FastAPI
+from typing import Any, Dict
 
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .agent import agent
-
 from .state import AgentState
+from .database import (
+    save_plan,
+    get_plan,
+    get_recent_plans,
+    test_database_connection
+)
 
 
 app = FastAPI(
-
     title="Deadline Rescue Agent",
-
     description=(
         "Stateful Agentic AI system for "
         "deadline planning, rescue, "
         "replanning and what-if simulation."
     ),
-
     version="1.0.0"
 )
 
 
-class UserRequest(BaseModel):
+# --------------------------------------------------
+# CORS
+# --------------------------------------------------
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# --------------------------------------------------
+# Request Model
+# --------------------------------------------------
+
+class UserRequest(BaseModel):
     message: str
 
 
+# --------------------------------------------------
+# Root
+# --------------------------------------------------
+
 @app.get("/")
 def root():
-
     return {
-
-        "message":
-            "Deadline Rescue Agent is running."
+        "message": "Deadline Rescue Agent is running."
     }
 
+
+# --------------------------------------------------
+# Health Check
+# --------------------------------------------------
+
+@app.get("/health")
+def health_check():
+
+    database_status = test_database_connection()
+
+    return {
+        "status": "ok",
+        "api": "healthy",
+        "database": (
+            "connected"
+            if database_status
+            else "disconnected"
+        )
+    }
+
+
+# --------------------------------------------------
+# Analyze User Request
+# --------------------------------------------------
 
 @app.post("/analyze")
 def analyze(
     request: UserRequest
-):
+) -> Dict[str, Any]:
+
+    if not request.message.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Message cannot be empty."
+        )
 
     initial_state: AgentState = {
-
-        "user_input":
-            request.message
+        "user_input": request.message
     }
 
-    result = agent.invoke(
-        initial_state
-    )
+    try:
 
-    return {
+        # Run LangGraph agent
+        result = agent.invoke(
+            initial_state
+        )
 
-        # --------------------------------
-        # Original plan
-        # --------------------------------
+        # Save complete plan to MongoDB
+        plan_id = save_plan(result)
 
-        "goal":
-            result.get("goal"),
+        return {
+            "plan_id": plan_id,
 
-        "tasks":
-            result.get("tasks"),
+            "goal": result.get("goal"),
 
-        "priorities":
-            result.get("priorities"),
+            "tasks": result.get("tasks"),
 
-        "constraints":
-            result.get("constraints"),
+            "priorities":
+                result.get("priorities"),
 
-        "schedule":
-            result.get("schedule"),
+            "constraints":
+                result.get("constraints"),
 
-        "required_hours":
-            result.get("required_hours"),
+            "schedule":
+                result.get("schedule"),
 
-        "available_hours":
-            result.get("available_hours"),
+            "required_hours":
+                result.get("required_hours"),
 
-        "shortage_hours":
-            result.get("shortage_hours"),
+            "available_hours":
+                result.get("available_hours"),
 
-        "risk_level":
-            result.get("risk_level"),
+            "shortage_hours":
+                result.get("shortage_hours"),
 
-        "risk_reason":
-            result.get("risk_reason"),
+            "risk_level":
+                result.get("risk_level"),
 
-        "decision":
-            result.get("decision"),
+            "risk_reason":
+                result.get("risk_reason"),
 
-        # --------------------------------
-        # Basic rescue
-        # --------------------------------
+            "decision":
+                result.get("decision"),
 
-        "rescue_schedule":
-            result.get("rescue_schedule"),
+            "rescue_schedule":
+                result.get("rescue_schedule"),
 
-        "rescued_hours":
-            result.get("rescued_hours"),
+            "rescued_hours":
+                result.get("rescued_hours"),
 
-        "unresolved_hours":
-            result.get("unresolved_hours"),
+            "unresolved_hours":
+                result.get("unresolved_hours"),
 
-        "rescue_reason":
-            result.get("rescue_reason"),
+            "rescue_reason":
+                result.get("rescue_reason"),
 
-        # --------------------------------
-        # Advanced replanning
-        # --------------------------------
+            "replanned_tasks":
+                result.get("replanned_tasks"),
 
-        "replanned_tasks":
-            result.get("replanned_tasks"),
+            "preserved_tasks":
+                result.get("preserved_tasks"),
 
-        "preserved_tasks":
-            result.get("preserved_tasks"),
+            "reduced_tasks":
+                result.get("reduced_tasks"),
 
-        "reduced_tasks":
-            result.get("reduced_tasks"),
+            "deferred_tasks":
+                result.get("deferred_tasks"),
 
-        "deferred_tasks":
-            result.get("deferred_tasks"),
+            "replan_schedule":
+                result.get("replan_schedule"),
 
-        "replan_schedule":
-            result.get("replan_schedule"),
+            "replan_required_hours":
+                result.get("replan_required_hours"),
 
-        "replan_required_hours":
-            result.get(
-                "replan_required_hours"
-            ),
+            "replan_unresolved_hours":
+                result.get("replan_unresolved_hours"),
 
-        "replan_unresolved_hours":
-            result.get(
-                "replan_unresolved_hours"
-            ),
+            "replan_reason":
+                result.get("replan_reason"),
 
-        "replan_reason":
-            result.get(
-                "replan_reason"
-            ),
+            # What-if simulation
+            "simulation_requested":
+                result.get("simulation_requested"),
 
-        # --------------------------------
-        # What-if simulation
-        # --------------------------------
+            "simulation_type":
+                result.get("simulation_type"),
 
-        "simulation_requested":
-            result.get(
-                "simulation_requested"
-            ),
+            "simulation_change":
+                result.get("simulation_change"),
 
-        "simulation_type":
-            result.get(
-                "simulation_type"
-            ),
+            "simulation_description":
+                result.get(
+                    "simulation_description"
+                ),
 
-        "simulation_change":
-            result.get(
-                "simulation_change"
-            ),
+            "simulated_constraints":
+                result.get(
+                    "simulated_constraints"
+                ),
 
-        "simulation_description":
-            result.get(
-                "simulation_description"
-            ),
+            "simulated_required_hours":
+                result.get(
+                    "simulated_required_hours"
+                ),
 
-        "simulated_constraints":
-            result.get(
-                "simulated_constraints"
-            ),
+            "simulated_available_hours":
+                result.get(
+                    "simulated_available_hours"
+                ),
 
-        "simulated_required_hours":
-            result.get(
-                "simulated_required_hours"
-            ),
+            "simulated_shortage_hours":
+                result.get(
+                    "simulated_shortage_hours"
+                ),
 
-        "simulated_available_hours":
-            result.get(
-                "simulated_available_hours"
-            ),
+            "simulated_risk_level":
+                result.get(
+                    "simulated_risk_level"
+                ),
 
-        "simulated_shortage_hours":
-            result.get(
-                "simulated_shortage_hours"
-            ),
+            "simulated_risk_reason":
+                result.get(
+                    "simulated_risk_reason"
+                ),
 
-        "simulated_risk_level":
-            result.get(
-                "simulated_risk_level"
-            ),
+            "simulated_replanned_tasks":
+                result.get(
+                    "simulated_replanned_tasks"
+                ),
 
-        "simulated_risk_reason":
-            result.get(
-                "simulated_risk_reason"
-            ),
+            "simulated_schedule":
+                result.get(
+                    "simulated_schedule"
+                ),
 
-        "simulated_replanned_tasks":
-            result.get(
-                "simulated_replanned_tasks"
-            ),
+            "simulation_reason":
+                result.get(
+                    "simulation_reason"
+                ),
 
-        "simulated_schedule":
-            result.get(
-                "simulated_schedule"
-            ),
+            "simulation_impact":
+                result.get(
+                    "simulation_impact"
+                ),
 
-        "simulation_reason":
-            result.get(
-                "simulation_reason"
-            ),
+            "final_response":
+                result.get("final_response")
+        }
 
-        "simulation_impact":
-            result.get(
-                "simulation_impact"
-            ),
+    except Exception as error:
 
-        # --------------------------------
-        # Final
-        # --------------------------------
-
-        "final_response":
-            result.get(
-                "final_response"
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Agent execution failed: "
+                f"{str(error)}"
             )
-    }
+        )
+
+
+# --------------------------------------------------
+# Get Saved Plan
+# --------------------------------------------------
+
+@app.get("/plans/{plan_id}")
+def get_saved_plan(plan_id: str):
+
+    try:
+
+        plan = get_plan(plan_id)
+
+        if plan is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Plan not found."
+            )
+
+        return plan
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Failed to retrieve plan: "
+                f"{str(error)}"
+            )
+        )
+
+
+# --------------------------------------------------
+# Get Recent Plans
+# --------------------------------------------------
+
+@app.get("/plans")
+def recent_plans():
+
+    try:
+
+        plans = get_recent_plans()
+
+        return {
+            "count": len(plans),
+            "plans": plans
+        }
+
+    except Exception as error:
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Failed to retrieve plans: "
+                f"{str(error)}"
+            )
+        )

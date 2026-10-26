@@ -1,11 +1,46 @@
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+
+import Layout from "./components/layout/Layout";
+
+import Dashboard from "./pages/Dashboard";
+import NewPlan from "./pages/NewPlan";
+import Plans from "./pages/Plans";
+import PlanDetails from "./pages/PlanDetails";
+
 function App() {
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <h1 className="text-4xl font-bold">
-        Deadline Rescue Agent
-      </h1>
-    </div>
-  )
+    <BrowserRouter>
+
+      <Layout>
+
+        <Routes>
+
+          <Route
+            path="/"
+            element={<Dashboard />}
+          />
+
+          <Route
+            path="/new-plan"
+            element={<NewPlan />}
+          />
+
+          <Route
+            path="/plans"
+            element={<Plans />}
+          />
+
+          <Route
+            path="/plans/:id"
+            element={<PlanDetails />}
+          />
+
+        </Routes>
+
+      </Layout>
+
+    </BrowserRouter>
+  );
 }
 
-export default App
+export default App;
